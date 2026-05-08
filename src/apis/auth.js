@@ -5,10 +5,7 @@ export const adminLogin = async ({ phone, password }) => {
   return data;
 };
 
-export const changePassword = async ({ currentPassword, newPassword }) => {
-  const { data } = await http.post("/admin/change-password", {
-    currentPassword,
-    newPassword,
-  });
+export const updateProfile = async (payload) => {
+  const { data } = await http.put("/auth/update-profile", payload);
   return data;
 };

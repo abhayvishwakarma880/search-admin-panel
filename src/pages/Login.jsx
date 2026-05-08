@@ -5,14 +5,21 @@ import { useTheme } from "../context/ThemeContext";
 import { useFont } from "../context/FontContext";
 import { useNavigate } from "react-router-dom";
 import { adminLogin } from "../apis/auth";
+import { FaEye, FaEyeSlash } from "react-icons/fa";
+
+const SAVED_CREDS_KEY = "admin-saved-creds";
 
 const Login = () => {
+  const saved = JSON.parse(localStorage.getItem(SAVED_CREDS_KEY) || "null");
+
   const [credentials, setCredentials] = useState({
-    phone: "",
-    password: "",
+    phone: saved?.phone || "",
+    password: saved?.password || "",
   });
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [savePassword, setSavePassword] = useState(!!saved);
 
   const { setLoginData } = useAuth();
   const { themeColors } = useTheme();
@@ -20,7 +27,9 @@ const Login = () => {
   const navigate = useNavigate();
 
   const handleChange = (e) => {
-    setCredentials((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    if (name === "phone" && (!/^\d*$/.test(value) || value.length > 10)) return;
+    setCredentials((prev) => ({ ...prev, [name]: value }));
     setError("");
   };
 
@@ -41,6 +50,13 @@ const Login = () => {
       };
 
       setLoginData(adminObject);
+
+      if (savePassword) {
+        localStorage.setItem(SAVED_CREDS_KEY, JSON.stringify({ phone: credentials.phone.trim(), password: credentials.password }));
+      } else {
+        localStorage.removeItem(SAVED_CREDS_KEY);
+      }
+
       navigate("/dashboard", { replace: true });
     } catch (err) {
       const msg =
@@ -70,19 +86,19 @@ const Login = () => {
       >
         {/* Branding Section */}
         <div className="text-center mb-8">
-          <div className="w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center bg-white shadow">
+          {/* <div className="w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center bg-white shadow">
             <img
               src="sks-logo.jpg"
               alt="SKS Logo"
               className="w-full h-full object-contain"
             />
-          </div>
+          </div> */}
 
           <h1
             className="text-3xl font-bold mb-2"
             style={{ color: themeColors.primary }}
           >
-            SKS Laddu
+            Search
           </h1>
 
           <p
@@ -125,18 +141,19 @@ const Login = () => {
               value={credentials.phone}
               onChange={handleChange}
               required
+              maxLength={10}
+              inputMode="numeric"
               className="w-full p-3 rounded-lg border text-sm focus:outline-none focus:ring-2 transition-all"
               style={{
                 backgroundColor: themeColors.background,
                 color: themeColors.text,
                 borderColor: themeColors.border,
               }}
-              placeholder="Enter phone number"
+              placeholder="Enter 10-digit phone number"
               disabled={isLoading}
             />
           </div>
 
-          {/* Password */}
           <div>
             <label
               htmlFor="password"
@@ -145,29 +162,59 @@ const Login = () => {
             >
               Password
             </label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              value={credentials.password}
-              onChange={handleChange}
-              required
-              className="w-full p-3 rounded-lg border text-sm focus:outline-none focus:ring-2 transition-all"
-              style={{
-                backgroundColor: themeColors.background,
-                color: themeColors.text,
-                borderColor: themeColors.border,
-              }}
-              placeholder="Enter your password"
-              disabled={isLoading}
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                id="password"
+                name="password"
+                value={credentials.password}
+                onChange={handleChange}
+                required
+                className="w-full p-3 pr-10 rounded-lg border text-sm focus:outline-none focus:ring-2 transition-all"
+                style={{
+                  backgroundColor: themeColors.background,
+                  color: themeColors.text,
+                  borderColor: themeColors.border,
+                }}
+                placeholder="Enter your password"
+                disabled={isLoading}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((p) => !p)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs opacity-50 hover:opacity-100 transition-opacity cursor-pointer"
+                style={{ color: themeColors.text }}
+                tabIndex={-1}
+              >
+                {showPassword ? <FaEyeSlash /> : <FaEye />}
+              </button>
+            </div>
           </div>
+
+          {/* Save Password */}
+          <label className="flex items-center gap-2 cursor-pointer select-none w-fit">
+            <div
+              onClick={() => setSavePassword((p) => !p)}
+              className="w-4 h-4 rounded border flex items-center justify-center transition-colors"
+              style={{
+                backgroundColor: savePassword ? themeColors.primary : "transparent",
+                borderColor: savePassword ? themeColors.primary : themeColors.border,
+              }}
+            >
+              {savePassword && (
+                <svg viewBox="0 0 10 8" className="w-2.5 h-2.5" fill="none">
+                  <path d="M1 4l2.5 2.5L9 1" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </div>
+            <span className="text-xs" style={{ color: themeColors.text }}>Remember credentials</span>
+          </label>
 
           {/* Submit Button */}
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-3 px-4 rounded-lg font-semibold text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg"
+            className="w-full py-3 cursor-pointer px-4 rounded-lg font-semibold text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg"
             style={{
               backgroundColor: themeColors.primary,
               color: themeColors.onPrimary,

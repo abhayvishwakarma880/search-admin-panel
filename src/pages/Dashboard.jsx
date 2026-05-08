@@ -1,950 +1,180 @@
-// src/pages/Dashboard.jsx
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useTheme } from "../context/ThemeContext";
+import { getDashboardStats } from "../apis/admin";
 import {
-  FaShoppingCart,
-  FaRupeeSign,
-  FaUsers,
-  FaBoxOpen,
-  FaChartBar,
-  FaSyncAlt,
-  FaEnvelopeOpenText,
-  FaTags,
+  FaUsers, FaHome, FaBriefcase, FaTools,
+  FaClock, FaExclamationTriangle, FaFlag,
+  FaRupeeSign, FaSyncAlt,
 } from "react-icons/fa";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-} from "recharts";
-import { getDashboardOverview } from "../apis/dashboard";
 
-// ---------- helpers ----------
-const fmtNum = (n) =>
-  typeof n === "number" ? n.toLocaleString("en-IN") : n ?? "-";
-
+const fmtNum = (n) => (typeof n === "number" ? n.toLocaleString("en-IN") : "-");
 const fmtCurrency = (n) =>
   typeof n === "number"
     ? `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`
-    : n ?? "-";
+    : "-";
 
-const fmtDate = (iso) =>
-  iso ? new Date(iso).toLocaleDateString("en-IN") : "-";
+const StatCard = ({ title, value, sub, icon: Icon, themeColors }) => (
+  <div
+    className="p-5 rounded-xl border flex items-start gap-4 hover:shadow-md transition-shadow"
+    style={{ backgroundColor: themeColors.surface, borderColor: themeColors.border }}
+  >
+    <div
+      className="p-3 rounded-xl"
+      style={{ backgroundColor: themeColors.primary + "15" }}
+    >
+      <Icon className="text-xl" style={{ color: themeColors.primary }} />
+    </div>
+    <div>
+      <p className="text-xs font-medium opacity-60" style={{ color: themeColors.text }}>{title}</p>
+      <p className="text-2xl font-bold mt-0.5" style={{ color: themeColors.primary }}>{value}</p>
+      {sub && <p className="text-xs opacity-60 mt-0.5" style={{ color: themeColors.text }}>{sub}</p>}
+    </div>
+  </div>
+);
 
-const shortId = (id = "") => (id.length > 8 ? `...${id.slice(-8)}` : id);
-
-// ---------- component ----------
 export default function Dashboard() {
   const { themeColors } = useTheme();
-
-  const [overview, setOverview] = useState(null);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
-  const fetchOverview = async (isRefresh = false) => {
+  const fetchStats = async (isRefresh = false) => {
     try {
-      if (isRefresh) setRefreshing(true);
+      isRefresh ? setRefreshing(true) : setLoading(true);
       setError("");
-      if (!isRefresh) setLoading(true);
-
-      // const data = await getDashboardOverview();
-      
-      // Artificial delay to simulate network
-      await new Promise(resolve => setTimeout(resolve, 800));
-
-      const dummyData = {
-        summaryCards: {
-          totalRevenue: 1254300,
-          monthRevenue: 450200,
-          avgOrderValue: 2450,
-          totalOrders: 512,
-          todayOrders: 14,
-          totalProducts: 85,
-          activeProducts: 78,
-          totalCategories: 12,
-          activeCategories: 10,
-          totalEnquiries: 145,
-          unreadEnquiries: 8,
-          activeOffers: 5
-        },
-        charts: {
-          salesLast7Days: [
-            { date: new Date(Date.now() - 6 * 86400000).toISOString(), orders: 12, revenue: 24000 },
-            { date: new Date(Date.now() - 5 * 86400000).toISOString(), orders: 18, revenue: 38000 },
-            { date: new Date(Date.now() - 4 * 86400000).toISOString(), orders: 15, revenue: 31000 },
-            { date: new Date(Date.now() - 3 * 86400000).toISOString(), orders: 22, revenue: 48000 },
-            { date: new Date(Date.now() - 2 * 86400000).toISOString(), orders: 19, revenue: 41000 },
-            { date: new Date(Date.now() - 1 * 86400000).toISOString(), orders: 25, revenue: 52000 },
-            { date: new Date().toISOString(), orders: 14, revenue: 29000 }
-          ],
-          productsByCategory: [
-            { name: "Sweets", totalProducts: 30, activeProducts: 28 },
-            { name: "Namkeen", totalProducts: 25, activeProducts: 22 },
-            { name: "Gift Packs", totalProducts: 15, activeProducts: 15 },
-            { name: "Dry Fruits", totalProducts: 10, activeProducts: 9 },
-            { name: "Beverages", totalProducts: 5, activeProducts: 4 }
-          ]
-        },
-        tables: {
-          latestOrders: [
-            { _id: "ORD001", shippingAddress: { name: "Rahul Sharma", city: "Mathura", state: "UP" }, total: 1250, status: "Delivered", paymentMethod: "COD", paymentStatus: "Paid", createdAt: new Date().toISOString(), items: [{ productName: "Kesar Laddu", quantity: 2 }] },
-            { _id: "ORD002", shippingAddress: { name: "Amit Kumar", city: "Delhi", state: "Delhi" }, total: 850, status: "Processing", paymentMethod: "UPI", paymentStatus: "Paid", createdAt: new Date().toISOString(), items: [{ productName: "Motichoor Laddu", quantity: 1 }] },
-            { _id: "ORD003", shippingAddress: { name: "Priya Singh", city: "Agra", state: "UP" }, total: 2100, status: "Pending", paymentMethod: "COD", paymentStatus: "Unpaid", createdAt: new Date().toISOString(), items: [{ productName: "Special Thali", quantity: 1 }] }
-          ],
-          latestProducts: [
-            { _id: "P001", name: "Kesar Laddu", category: { name: "Sweets" }, price: 600, finalPrice: 550, isActive: true, createdAt: new Date().toISOString() },
-            { _id: "P002", name: "Motichoor Laddu", category: { name: "Sweets" }, price: 400, finalPrice: 380, isActive: true, createdAt: new Date().toISOString() },
-            { _id: "P003", name: "Aloo Bhujia", category: { name: "Namkeen" }, price: 200, finalPrice: 180, isActive: true, createdAt: new Date().toISOString() }
-          ],
-          recentEnquiries: [
-            { _id: "E001", name: "Gaurav Gupta", email: "gaurav@example.com", phone: "9876543210", subject: "Bulk Order", status: "New", createdAt: new Date().toISOString() },
-            { _id: "E002", name: "Deepak Verma", email: "deepak@example.com", phone: "9988776655", subject: "Delivery Query", status: "Read", createdAt: new Date().toISOString() }
-          ],
-          activeOffers: []
-        },
-        meta: {
-          generatedAtIST: new Date().toLocaleString("en-IN")
-        }
-      };
-
-      setOverview(dummyData);
+      const res = await getDashboardStats();
+      setStats(res.stats);
     } catch (e) {
-      setError(
-        e?.response?.data?.message ||
-          e?.message ||
-          "Failed to load dashboard overview."
-      );
+      setError(e?.response?.data?.message || e?.message || "Failed to load stats.");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  useEffect(() => {
-    fetchOverview(false);
-  }, []);
+  useEffect(() => { fetchStats(); }, []);
 
-  const summary = overview?.summaryCards || {};
-  const charts = overview?.charts || {};
-  const tables = overview?.tables || {};
-  const meta = overview?.meta || {};
+  const s = stats;
 
-  const salesLast7Days = charts.salesLast7Days || [];
-  const productsByCategory = charts.productsByCategory || [];
+  // Role wise users
+  const roleMap = {};
+  s?.users?.byRole?.forEach(({ _id, count }) => { roleMap[_id] = count; });
 
-  const latestOrders = tables.latestOrders || [];
-  const latestProducts = tables.latestProducts || [];
-  const recentEnquiries = tables.recentEnquiries || [];
-  const activeOffers = tables.activeOffers || [];
+  // Booking status
+  const bookingMap = {};
+  s?.bookings?.byStatus?.forEach(({ _id, count }) => { bookingMap[_id] = count; });
 
-  const ordersTrend = useMemo(
-    () =>
-      salesLast7Days.map((d) => ({
-        date: fmtDate(d.date),
-        orders: d.orders,
-      })),
-    [salesLast7Days]
-  );
-
-  const revenueTrend = useMemo(
-    () =>
-      salesLast7Days.map((d) => ({
-        date: fmtDate(d.date),
-        revenue: d.revenue,
-      })),
-    [salesLast7Days]
-  );
-
-  const categoryPerformance = useMemo(
-    () =>
-      productsByCategory.map((c) => ({
-        category: c.name || c.slug || "Untitled",
-        totalProducts: c.totalProducts || 0,
-        activeProducts: c.activeProducts || 0,
-      })),
-    [productsByCategory]
-  );
-
-  const summaryCards = [
-    {
-      title: "Total Revenue",
-      value: fmtCurrency(summary.totalRevenue),
-      icon: FaRupeeSign,
-      description: `This month: ${fmtCurrency(
-        summary.monthRevenue
-      )} • Avg order: ${fmtCurrency(summary.avgOrderValue)}`,
-    },
-    {
-      title: "Orders",
-      value: fmtNum(summary.totalOrders),
-      icon: FaShoppingCart,
-      description: `Today: ${fmtNum(summary.todayOrders)}`,
-    },
-    {
-      title: "Catalog",
-      value: fmtNum(summary.totalProducts),
-      icon: FaBoxOpen,
-      description: `Active products: ${fmtNum(
-        summary.activeProducts
-      )} • Categories: ${fmtNum(summary.totalCategories)} (${fmtNum(
-        summary.activeCategories
-      )} active)`,
-    },
-    {
-      title: "Engagement",
-      value: fmtNum(summary.totalEnquiries),
-      icon: FaUsers,
-      description: `Unread enquiries: ${fmtNum(
-        summary.unreadEnquiries
-      )} • Active offers: ${fmtNum(summary.activeOffers)}`,
-    },
-  ];
-
-  const isEmpty = !loading && !overview;
+  const summaryCards = s ? [
+    { title: "Total Users",      value: fmtNum(s.users.total),         sub: `New today: ${fmtNum(s.users.newToday)}`,                icon: FaUsers },
+    { title: "Total Revenue",    value: fmtCurrency(s.revenue),        sub: "Platform earnings",                                     icon: FaRupeeSign },
+    { title: "Total Rooms",      value: fmtNum(s.listings.rooms),      sub: `Pending approval: ${fmtNum(s.pending.rooms)}`,          icon: FaHome },
+    { title: "Total Jobs",       value: fmtNum(s.listings.jobs),       sub: `Pending approval: ${fmtNum(s.pending.jobs)}`,           icon: FaBriefcase },
+    { title: "Total Services",   value: fmtNum(s.listings.services),   sub: `Pending approval: ${fmtNum(s.pending.services)}`,       icon: FaTools },
+    { title: "Total Bookings",   value: fmtNum(s.bookings.total),      sub: `Confirmed: ${fmtNum(bookingMap.confirmed)} • Pending: ${fmtNum(bookingMap.pending)}`, icon: FaClock },
+    { title: "Fraud Suspected",  value: fmtNum((s.fraud.rooms || 0) + (s.fraud.jobs || 0) + (s.fraud.services || 0)), sub: `Rooms: ${s.fraud.rooms} • Jobs: ${s.fraud.jobs} • Services: ${s.fraud.services}`, icon: FaExclamationTriangle },
+    { title: "Pending Reports",  value: fmtNum(s.reports.pending),     sub: "Unresolved reports",                                    icon: FaFlag },
+  ] : [];
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div className="flex items-center justify-between">
         <div>
-          <h1
-            className="text-2xl font-bold"
-            style={{ color: themeColors.text }}
-          >
-            E-commerce Overview
-          </h1>
-          <p
-            className="text-sm mt-1 opacity-75"
-            style={{ color: themeColors.text }}
-          >
-            Live summary of orders, revenue, catalogue and customer activity.
-          </p>
-          {meta.generatedAtIST && (
-            <p
-              className="text-xs mt-1 opacity-60"
-              style={{ color: themeColors.text }}
-            >
-              Last updated (IST): {meta.generatedAtIST}
-            </p>
-          )}
+          <h1 className="text-2xl font-bold" style={{ color: themeColors.text }}>Dashboard</h1>
+          <p className="text-sm opacity-60 mt-0.5" style={{ color: themeColors.text }}>Platform ka overview</p>
         </div>
-
-        {/* Controls */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => fetchOverview(true)}
-            disabled={loading || refreshing}
-            className="px-3 py-2 rounded-lg border text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{
-              backgroundColor: themeColors.surface,
-              borderColor: themeColors.border,
-              color: themeColors.text,
-            }}
-            title="Refresh dashboard"
-          >
-            <FaSyncAlt className={refreshing ? "animate-spin" : ""} />
-            {refreshing ? "Refreshing..." : "Refresh"}
-          </button>
-        </div>
+        <button
+          onClick={() => fetchStats(true)}
+          disabled={loading || refreshing}
+          className="px-3 py-2 rounded-lg border text-sm flex items-center gap-2 disabled:opacity-50"
+          style={{ backgroundColor: themeColors.surface, borderColor: themeColors.border, color: themeColors.text }}
+        >
+          <FaSyncAlt className={refreshing ? "animate-spin" : ""} />
+          {refreshing ? "Refreshing..." : "Refresh"}
+        </button>
       </div>
 
-      {/* Error / Empty */}
+      {/* Error */}
       {error && (
-        <div
-          className="p-3 rounded-lg text-sm border"
-          style={{
-            backgroundColor: themeColors.danger + "15",
-            borderColor: themeColors.danger + "50",
-            color: themeColors.danger,
-          }}
-        >
+        <div className="p-3 rounded-lg text-sm border"
+          style={{ backgroundColor: themeColors.danger + "15", borderColor: themeColors.danger + "50", color: themeColors.danger }}>
           {error}
         </div>
       )}
 
-      {isEmpty && !error && (
-        <div
-          className="p-3 rounded-lg text-sm border"
-          style={{
-            backgroundColor: themeColors.surface,
-            borderColor: themeColors.border,
-            color: themeColors.text,
-          }}
-        >
-          No dashboard data available.
-        </div>
-      )}
-
-      {/* Loading overlay */}
+      {/* Loading */}
       {loading && (
-        <div
-          className="p-3 rounded-lg text-sm border"
-          style={{
-            backgroundColor: themeColors.surface,
-            borderColor: themeColors.border,
-            color: themeColors.text,
-          }}
-        >
-          Loading dashboard...
+        <div className="p-4 rounded-lg text-sm border" style={{ backgroundColor: themeColors.surface, borderColor: themeColors.border, color: themeColors.text }}>
+          Loading stats...
         </div>
       )}
 
-      {/* Rest of content only when we have data */}
-      {!loading && overview && (
+      {/* Stats Cards */}
+      {!loading && s && (
         <>
-          {/* Summary cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {summaryCards.map((stat, index) => (
-              <div
-                key={index}
-                className="p-6 rounded-xl border transition-all duration-300 hover:shadow-lg group"
-                style={{
-                  backgroundColor: themeColors.surface,
-                  borderColor: themeColors.border,
-                }}
-              >
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <p
-                      className="text-sm font-medium mb-1 opacity-75"
-                      style={{ color: themeColors.text }}
-                    >
-                      {stat.title}
-                    </p>
-                    <p
-                      className="text-2xl font-bold mb-2"
-                      style={{ color: themeColors.primary }}
-                    >
-                      {stat.value}
-                    </p>
-                    <p
-                      className="text-xs opacity-60"
-                      style={{ color: themeColors.text }}
-                    >
-                      {stat.description}
-                    </p>
-                  </div>
-                  <div
-                    className="p-3 rounded-xl group-hover:scale-110 transition-transform duration-300"
-                    style={{ backgroundColor: themeColors.primary + "15" }}
-                  >
-                    <stat.icon
-                      className="text-lg"
-                      style={{ color: themeColors.primary }}
-                    />
-                  </div>
-                </div>
-              </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {summaryCards.map((card) => (
+              <StatCard key={card.title} {...card} themeColors={themeColors} />
             ))}
           </div>
 
-          {/* Charts Row 1: Orders & Revenue (last 7 days) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Orders per day */}
-            <div
-              className="p-6 rounded-xl border"
-              style={{
-                backgroundColor: themeColors.surface,
-                borderColor: themeColors.border,
-              }}
-            >
-              <h2
-                className="text-lg font-semibold mb-4 flex items-center justify-between"
-                style={{ color: themeColors.text }}
-              >
-                <span className="flex items-center gap-2">
-                  <FaChartBar />
-                  Orders (Last 7 Days)
-                </span>
-                <span className="text-xs opacity-70">
-                  Today: {fmtNum(summary.todayOrders)} • Total:{" "}
-                  {fmtNum(summary.totalOrders)}
-                </span>
-              </h2>
-              <div style={{ width: "100%", height: 280 }}>
-                <ResponsiveContainer>
-                  <LineChart data={ordersTrend}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis allowDecimals={false} />
-                    <Tooltip />
-                    <Line
-                      type="monotone"
-                      dataKey="orders"
-                      stroke="#8884d8"
-                      strokeWidth={2}
-                      dot={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Revenue per day */}
-            <div
-              className="p-6 rounded-xl border"
-              style={{
-                backgroundColor: themeColors.surface,
-                borderColor: themeColors.border,
-              }}
-            >
-              <h2
-                className="text-lg font-semibold mb-4 flex items-center justify-between"
-                style={{ color: themeColors.text }}
-              >
-                <span className="flex items-center gap-2">
-                  <FaChartBar />
-                  Revenue (Last 7 Days)
-                </span>
-                <span className="text-xs opacity-70">
-                  Total: {fmtCurrency(summary.totalRevenue)}
-                </span>
-              </h2>
-              <div style={{ width: "100%", height: 280 }}>
-                <ResponsiveContainer>
-                  <LineChart data={revenueTrend}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis
-                      tickFormatter={(v) =>
-                        `₹${(v / 1000).toFixed(0)}k`
-                      }
-                    />
-                    <Tooltip
-                      formatter={(value) => fmtCurrency(value)}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="revenue"
-                      stroke="#82ca9d"
-                      strokeWidth={2}
-                      dot={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+          {/* Users by Role */}
+          <div className="p-5 rounded-xl border" style={{ backgroundColor: themeColors.surface, borderColor: themeColors.border }}>
+            <h2 className="text-base font-semibold mb-4" style={{ color: themeColors.text }}>Users by Role</h2>
+            <div className="flex flex-wrap gap-3">
+              {s.users.byRole.map(({ _id, count }) => (
+                <div key={_id} className="px-4 py-2 rounded-lg border text-sm"
+                  style={{ backgroundColor: themeColors.primary + "10", borderColor: themeColors.primary + "30", color: themeColors.primary }}>
+                  <span className="font-semibold capitalize">{_id}</span>
+                  <span className="ml-2 font-bold">{fmtNum(count)}</span>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Chart Row 2: Products by category */}
-          <div
-            className="p-6 rounded-xl border"
-            style={{
-              backgroundColor: themeColors.surface,
-              borderColor: themeColors.border,
-            }}
-          >
-            <h2
-              className="text-lg font-semibold mb-4 flex items-center gap-2"
-              style={{ color: themeColors.text }}
-            >
-              <FaChartBar />
-              Products by Category
-            </h2>
-            <div style={{ width: "100%", height: 280 }}>
-              <ResponsiveContainer>
-                <BarChart data={categoryPerformance}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="category" />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip />
-                  <Bar dataKey="totalProducts" fill="#8884d8" />
-                </BarChart>
-              </ResponsiveContainer>
+          {/* Bookings by Status */}
+          <div className="p-5 rounded-xl border" style={{ backgroundColor: themeColors.surface, borderColor: themeColors.border }}>
+            <h2 className="text-base font-semibold mb-4" style={{ color: themeColors.text }}>Bookings by Status</h2>
+            <div className="flex flex-wrap gap-3">
+              {s.bookings.byStatus.map(({ _id, count }) => (
+                <div key={_id} className="px-4 py-2 rounded-lg border text-sm"
+                  style={{ backgroundColor: themeColors.surface, borderColor: themeColors.border, color: themeColors.text }}>
+                  <span className="font-semibold capitalize">{_id}</span>
+                  <span className="ml-2 font-bold" style={{ color: themeColors.primary }}>{fmtNum(count)}</span>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Tables: Latest Orders & Latest Products */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Latest orders table */}
-            <div
-              className="p-6 rounded-xl border"
-              style={{
-                backgroundColor: themeColors.surface,
-                borderColor: themeColors.border,
-              }}
-            >
-              <h2
-                className="text-lg font-semibold mb-4 flex items-center gap-2"
-                style={{ color: themeColors.text }}
-              >
-                <FaShoppingCart />
-                Latest Orders
-              </h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr
-                      style={{
-                        backgroundColor:
-                          themeColors.background + "30",
-                      }}
-                    >
-                      {[
-                        "Order",
-                        "Customer",
-                        "Items",
-                        "Total",
-                        "Status",
-                        "Payment",
-                        "Created",
-                      ].map((h) => (
-                        <th
-                          key={h}
-                          className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide"
-                          style={{ color: themeColors.text }}
-                        >
-                          {h}
-                        </th>
-                      ))}
+          {/* Pending + Fraud Summary */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="p-5 rounded-xl border" style={{ backgroundColor: themeColors.surface, borderColor: themeColors.border }}>
+              <h2 className="text-base font-semibold mb-4" style={{ color: themeColors.text }}>Pending Approvals</h2>
+              <table className="w-full text-sm">
+                <tbody>
+                  {[["Rooms", s.pending.rooms], ["Jobs", s.pending.jobs], ["Services", s.pending.services]].map(([label, val]) => (
+                    <tr key={label} className="border-b last:border-0" style={{ borderColor: themeColors.border }}>
+                      <td className="py-2 opacity-70" style={{ color: themeColors.text }}>{label}</td>
+                      <td className="py-2 font-bold text-right" style={{ color: themeColors.primary }}>{fmtNum(val)}</td>
                     </tr>
-                  </thead>
-                  <tbody
-                    className="divide-y"
-                    style={{ borderColor: themeColors.border }}
-                  >
-                    {latestOrders.map((o) => {
-                      const firstItem = o.items?.[0];
-                      const extraItems = (o.items?.length || 0) - 1;
-
-                      const itemText = firstItem
-                        ? `${firstItem.productName || firstItem.product?.name || "Item"
-                          } x${firstItem.quantity}`
-                        : "-";
-
-                      return (
-                        <tr key={o._id}>
-                          <td
-                            className="px-4 py-2 text-xs font-mono"
-                            style={{ color: themeColors.text }}
-                          >
-                            {shortId(o._id)}
-                            {o.offerCode && (
-                              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600">
-                                {o.offerCode}
-                              </span>
-                            )}
-                          </td>
-                          <td
-                            className="px-4 py-2"
-                            style={{ color: themeColors.text }}
-                          >
-                            {o.shippingAddress?.name || "-"}
-                            <div className="text-xs opacity-70">
-                              {o.shippingAddress?.city},{" "}
-                              {o.shippingAddress?.state}
-                            </div>
-                          </td>
-                          <td
-                            className="px-4 py-2 text-xs"
-                            style={{ color: themeColors.text }}
-                          >
-                            {itemText}
-                            {extraItems > 0 && (
-                              <span className="opacity-60">
-                                {" "}
-                                +{extraItems} more
-                              </span>
-                            )}
-                          </td>
-                          <td
-                            className="px-4 py-2"
-                            style={{ color: themeColors.text }}
-                          >
-                            {fmtCurrency(o.total)}
-                          </td>
-                          <td className="px-4 py-2 text-xs">
-                            <span
-                              className="inline-flex items-center px-2 py-1 rounded-full text-[11px] font-semibold"
-                              style={{
-                                backgroundColor:
-                                  themeColors.primary + "10",
-                                color: themeColors.primary,
-                              }}
-                            >
-                              {o.status}
-                            </span>
-                          </td>
-                          <td
-                            className="px-4 py-2 text-xs"
-                            style={{ color: themeColors.text }}
-                          >
-                            <div>{o.paymentMethod}</div>
-                            <div className="opacity-70">
-                              {o.paymentStatus}
-                            </div>
-                          </td>
-                          <td
-                            className="px-4 py-2 text-xs opacity-70"
-                            style={{ color: themeColors.text }}
-                          >
-                            {fmtDate(o.createdAt)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {latestOrders.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={7}
-                          className="px-4 py-4 text-center text-sm"
-                          style={{ color: themeColors.text }}
-                        >
-                          No recent orders.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
-            {/* Latest products table */}
-            <div
-              className="p-6 rounded-xl border"
-              style={{
-                backgroundColor: themeColors.surface,
-                borderColor: themeColors.border,
-              }}
-            >
-              <h2
-                className="text-lg font-semibold mb-4 flex items-center gap-2"
-                style={{ color: themeColors.text }}
-              >
-                <FaBoxOpen />
-                Latest Products
-              </h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr
-                      style={{
-                        backgroundColor:
-                          themeColors.background + "30",
-                      }}
-                    >
-                      {[
-                        "Product",
-                        "Category",
-                        "Price",
-                        "Final Price",
-                        "Status",
-                        "Created",
-                      ].map((h) => (
-                        <th
-                          key={h}
-                          className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide"
-                          style={{ color: themeColors.text }}
-                        >
-                          {h}
-                        </th>
-                      ))}
+            <div className="p-5 rounded-xl border" style={{ backgroundColor: themeColors.surface, borderColor: themeColors.border }}>
+              <h2 className="text-base font-semibold mb-4" style={{ color: themeColors.text }}>Fraud Suspected</h2>
+              <table className="w-full text-sm">
+                <tbody>
+                  {[["Rooms", s.fraud.rooms], ["Jobs", s.fraud.jobs], ["Services", s.fraud.services]].map(([label, val]) => (
+                    <tr key={label} className="border-b last:border-0" style={{ borderColor: themeColors.border }}>
+                      <td className="py-2 opacity-70" style={{ color: themeColors.text }}>{label}</td>
+                      <td className="py-2 font-bold text-right" style={{ color: val > 0 ? themeColors.danger : themeColors.text }}>{fmtNum(val)}</td>
                     </tr>
-                  </thead>
-                  <tbody
-                    className="divide-y"
-                    style={{ borderColor: themeColors.border }}
-                  >
-                    {latestProducts.map((p) => (
-                      <tr key={p._id}>
-                        <td
-                          className="px-4 py-2"
-                          style={{ color: themeColors.text }}
-                        >
-                          <div className="font-semibold">{p.name}</div>
-                          {p.slug && (
-                            <div className="text-[11px] opacity-70 font-mono">
-                              {p.slug}
-                            </div>
-                          )}
-                        </td>
-                        <td
-                          className="px-4 py-2 text-sm"
-                          style={{ color: themeColors.text }}
-                        >
-                          {p.category?.name || "-"}
-                        </td>
-                        <td
-                          className="px-4 py-2"
-                          style={{ color: themeColors.text }}
-                        >
-                          {fmtCurrency(p.price)}
-                        </td>
-                        <td
-                          className="px-4 py-2"
-                          style={{ color: themeColors.text }}
-                        >
-                          {fmtCurrency(p.finalPrice)}
-                        </td>
-                        <td className="px-4 py-2">
-                          <span
-                            className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold"
-                            style={{
-                              backgroundColor: p.isActive
-                                ? (themeColors.success ||
-                                    themeColors.primary) + "15"
-                                : themeColors.border,
-                              color: p.isActive
-                                ? themeColors.success ||
-                                  themeColors.primary
-                                : themeColors.text,
-                            }}
-                          >
-                            {p.isActive ? "Active" : "Inactive"}
-                          </span>
-                        </td>
-                        <td
-                          className="px-4 py-2 text-xs opacity-70"
-                          style={{ color: themeColors.text }}
-                        >
-                          {fmtDate(p.createdAt)}
-                        </td>
-                      </tr>
-                    ))}
-                    {latestProducts.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          className="px-4 py-4 text-center text-sm"
-                          style={{ color: themeColors.text }}
-                        >
-                          No recent products.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          {/* Recent enquiries & active offers */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Recent enquiries */}
-            <div
-              className="p-6 rounded-xl border"
-              style={{
-                backgroundColor: themeColors.surface,
-                borderColor: themeColors.border,
-              }}
-            >
-              <h2
-                className="text-lg font-semibold mb-4 flex items-center gap-2"
-                style={{ color: themeColors.text }}
-              >
-                <FaEnvelopeOpenText />
-                Recent Enquiries
-              </h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr
-                      style={{
-                        backgroundColor:
-                          themeColors.background + "30",
-                      }}
-                    >
-                      {[
-                        "Name",
-                        "Email",
-                        "Phone",
-                        "Subject",
-                        "Status",
-                        "Created",
-                      ].map((h) => (
-                        <th
-                          key={h}
-                          className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide"
-                          style={{ color: themeColors.text }}
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody
-                    className="divide-y"
-                    style={{ borderColor: themeColors.border }}
-                  >
-                    {recentEnquiries.map((e) => (
-                      <tr key={e._id}>
-                        <td
-                          className="px-4 py-2"
-                          style={{ color: themeColors.text }}
-                        >
-                          {e.name}
-                        </td>
-                        <td
-                          className="px-4 py-2 text-xs"
-                          style={{ color: themeColors.text }}
-                        >
-                          {e.email}
-                        </td>
-                        <td
-                          className="px-4 py-2 text-xs"
-                          style={{ color: themeColors.text }}
-                        >
-                          {e.phone}
-                        </td>
-                        <td
-                          className="px-4 py-2 text-xs"
-                          style={{ color: themeColors.text }}
-                        >
-                          {e.subject}
-                        </td>
-                        <td className="px-4 py-2 text-xs">
-                          <span
-                            className="inline-flex items-center px-2 py-1 rounded-full text-[11px] font-semibold"
-                            style={{
-                              backgroundColor: e.isRead
-                                ? themeColors.border
-                                : themeColors.primary + "10",
-                              color: e.isRead
-                                ? themeColors.text
-                                : themeColors.primary,
-                            }}
-                          >
-                            {e.status}
-                          </span>
-                        </td>
-                        <td
-                          className="px-4 py-2 text-xs opacity-70"
-                          style={{ color: themeColors.text }}
-                        >
-                          {fmtDate(e.createdAt)}
-                        </td>
-                      </tr>
-                    ))}
-                    {recentEnquiries.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          className="px-4 py-4 text-center text-sm"
-                          style={{ color: themeColors.text }}
-                        >
-                          No enquiries yet.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Active offers */}
-            <div
-              className="p-6 rounded-xl border"
-              style={{
-                backgroundColor: themeColors.surface,
-                borderColor: themeColors.border,
-              }}
-            >
-              <h2
-                className="text-lg font-semibold mb-4 flex items-center gap-2"
-                style={{ color: themeColors.text }}
-              >
-                <FaTags />
-                Active Offers
-              </h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr
-                      style={{
-                        backgroundColor:
-                          themeColors.background + "30",
-                      }}
-                    >
-                      {[
-                        "Code",
-                        "Title",
-                        "Type",
-                        "Value",
-                        "Min Order",
-                        "Max Discount",
-                      ].map((h) => (
-                        <th
-                          key={h}
-                          className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide"
-                          style={{ color: themeColors.text }}
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody
-                    className="divide-y"
-                    style={{ borderColor: themeColors.border }}
-                  >
-                    {activeOffers.map((o) => (
-                      <tr key={o._id}>
-                        <td
-                          className="px-4 py-2 font-mono text-xs"
-                          style={{ color: themeColors.text }}
-                        >
-                          {o.code}
-                        </td>
-                        <td
-                          className="px-4 py-2"
-                          style={{ color: themeColors.text }}
-                        >
-                          {o.title}
-                        </td>
-                        <td
-                          className="px-4 py-2 text-xs"
-                          style={{ color: themeColors.text }}
-                        >
-                          {o.discountType === "percentage"
-                            ? "Percentage"
-                            : "Flat"}
-                        </td>
-                        <td
-                          className="px-4 py-2 text-xs"
-                          style={{ color: themeColors.text }}
-                        >
-                          {o.discountType === "percentage"
-                            ? `${o.discountValue}%`
-                            : fmtCurrency(o.discountValue)}
-                        </td>
-                        <td
-                          className="px-4 py-2 text-xs"
-                          style={{ color: themeColors.text }}
-                        >
-                          {o.minOrderAmount
-                            ? fmtCurrency(o.minOrderAmount)
-                            : "-"}
-                        </td>
-                        <td
-                          className="px-4 py-2 text-xs"
-                          style={{ color: themeColors.text }}
-                        >
-                          {o.maxDiscountAmount
-                            ? fmtCurrency(o.maxDiscountAmount)
-                            : "-"}
-                        </td>
-                      </tr>
-                    ))}
-                    {activeOffers.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          className="px-4 py-4 text-center text-sm"
-                          style={{ color: themeColors.text }}
-                        >
-                          No active offers.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </>

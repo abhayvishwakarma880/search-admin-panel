@@ -1,470 +1,426 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useTheme } from "../context/ThemeContext";
-import { useFont } from "../context/FontContext";
-import { useAuth } from "../context/AuthContext";
 import { getAllUsers } from "../apis/user";
-import Pagination from "../components/Pagination";
-import {
-    FaUsers,
-    FaSearch,
-    FaSyncAlt,
-    FaEye,
-    FaUserCircle,
-    FaEnvelope,
-    FaPhone,
-    FaCalendarAlt,
-    FaMapMarkerAlt,
-    FaCheckCircle,
-    FaTimesCircle,
-    FaChevronRight,
-} from "react-icons/fa";
-import Swal from "sweetalert2";
+import { banUser, unbanUser } from "../apis/admin";
+import Table from "../components/Table";
+import { FaUsers, FaSyncAlt, FaEye, FaBan, FaCheckCircle, FaMapMarkerAlt } from "react-icons/fa";
 
 const fmtDate = (iso) =>
-    iso ? new Date(iso).toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-    }) : "-";
+  iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "-";
+
+const Badge = ({ color, bg, children }) => (
+  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold" style={{ backgroundColor: bg, color }}>
+    {children}
+  </span>
+);
 
 export default function Users() {
-    const { themeColors } = useTheme();
-    const { currentFont } = useFont();
-    const { isLoggedIn } = useAuth();
+  const { themeColors } = useTheme();
 
-    const [users, setUsers] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
-    const [search, setSearch] = useState("");
-    const [selectedUser, setSelectedUser] = useState(null);
+  const [users, setUsers]             = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState("");
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [banModal, setBanModal] = useState({ open: false, user: null, reason: "", loading: false, viewMode: false, closing: false, visible: false });
 
-    const [pagination, setPagination] = useState({
-        page: 1,
-        limit: 10,
-        total: 0,
-        totalPages: 0
-    });
+  const openBanModal = (user, reason = "", viewMode = false) => {
+    setBanModal({ open: true, user, reason, loading: false, viewMode, closing: false, visible: false });
+    setTimeout(() => setBanModal((prev) => ({ ...prev, visible: true })), 10);
+  };
 
-    const fetchUsers = async (page = 1) => {
-        try {
-            setLoading(true);
-            setError("");
-            // const res = await getAllUsers(page, 10);
-            
-            await new Promise(resolve => setTimeout(resolve, 600));
+  const closeBanModal = () => {
+    setBanModal((prev) => ({ ...prev, closing: true, visible: false }));
+    setTimeout(() => setBanModal({ open: false, user: null, reason: "", loading: false, viewMode: false, closing: false, visible: false }), 220);
+  };
 
-            const dummyUsers = [
-                {
-                    _id: "U001",
-                    firstName: "Rahul",
-                    lastName: "Sharma",
-                    email: "rahul@example.com",
-                    phone: "9876543210",
-                    gender: "Male",
-                    isActive: true,
-                    createdAt: "2024-01-15T10:30:00Z",
-                    isEmailVerified: true,
-                    isPhoneVerified: true,
-                    addresses: [
-                        { name: "Rahul Sharma", addressType: "Home", addressLine1: "123, Street Name", city: "Mathura", state: "UP", pincode: "281001", country: "India", phone: "9876543210" }
-                    ]
-                },
-                {
-                    _id: "U002",
-                    firstName: "Priya",
-                    lastName: "Singh",
-                    email: "priya@example.com",
-                    phone: "9988776655",
-                    gender: "Female",
-                    isActive: true,
-                    createdAt: "2024-02-10T14:20:00Z",
-                    isEmailVerified: true,
-                    isPhoneVerified: false,
-                    addresses: []
-                },
-                {
-                    _id: "U003",
-                    firstName: "Amit",
-                    lastName: "Kumar",
-                    email: "amit@example.com",
-                    phone: "8877665544",
-                    gender: "Male",
-                    isActive: false,
-                    createdAt: "2024-03-05T09:15:00Z",
-                    isEmailVerified: false,
-                    isPhoneVerified: true,
-                    addresses: []
-                }
-            ];
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const res = await getAllUsers(1, 500);
+      setUsers(res.users || []);
+    } catch (e) {
+      setError(e?.response?.data?.message || e?.message || "Failed to load users.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-            setUsers(dummyUsers);
-            setPagination({
-                page: 1,
-                limit: 10,
-                total: dummyUsers.length,
-                totalPages: 1
-            });
-        } catch (e) {
-            const msg = e?.response?.data?.message || e?.message || "Failed to load users.";
-            setError(msg);
-        } finally {
-            setLoading(false);
-        }
-    };
+  useEffect(() => { fetchUsers(); }, []);
 
-    useEffect(() => {
-        fetchUsers(1);
-    }, []);
+  const handleBan = (row) => {
+    openBanModal(row, "", false);
+  };
 
-    const handlePageChange = (newPage) => {
-        fetchUsers(newPage);
-    };
+  const handleBanSubmit = async () => {
+    if (!banModal.reason.trim()) return;
+    setBanModal((prev) => ({ ...prev, loading: true }));
+    try {
+      await banUser(banModal.user._id, banModal.reason);
+      setUsers((prev) => prev.map((u) => u._id === banModal.user._id ? { ...u, isActive: false, banned: { isBanned: true, reason: banModal.reason, bannedAt: new Date() } } : u));
+      setBanModal({ open: false, user: null, reason: "", loading: false, viewMode: false, closing: false });
+    } catch (e) {
+      const msg = e?.response?.data?.message || e?.message || "Failed to ban user.";
+      setBanModal((prev) => ({ ...prev, loading: false, error: msg }));
+    }
+  };
 
-    const filteredUsers = useMemo(() => {
-        if (!search.trim()) return users;
-        const q = search.toLowerCase();
-        return users.filter((u) => {
-            const fullName = `${u.firstName || ""} ${u.lastName || ""}`.toLowerCase();
-            const email = (u.email || "").toLowerCase();
-            const phone = (u.phone || "").toLowerCase();
-            return fullName.includes(q) || email.includes(q) || phone.includes(q);
-        });
-    }, [users, search]);
+  const handleUnban = async (row) => {
+    try {
+      await unbanUser(row._id);
+      setUsers((prev) => prev.map((u) => u._id === row._id ? { ...u, isActive: true, banned: { isBanned: false, reason: null, bannedAt: null } } : u));
+    } catch (e) {
+      alert(e?.response?.data?.message || "Unban failed");
+    }
+  };
 
-    const handleViewDetails = (user) => {
-        setSelectedUser(user);
-    };
-
-    return (
-        <div className="space-y-6 animate-fadeIn" style={{ fontFamily: currentFont.family }}>
-            {/* Header Section */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold flex items-center gap-3" style={{ color: themeColors.text }}>
-                        <div className="p-3 rounded-xl shadow-lg" style={{ backgroundColor: themeColors.primary + '20', color: themeColors.primary }}>
-                            <FaUsers />
-                        </div>
-                        Customer Management
-                    </h1>
-                    <p className="text-sm mt-2 opacity-70 max-w-xl" style={{ color: themeColors.text }}>
-                        View and manage all registered customers. Track their activities, preferences, and details in one place.
-                    </p>
-                </div>
-
-                <div className="flex items-center gap-3">
-                    <div className="relative group">
-                        <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-50 group-focus-within:opacity-100 transition-opacity" style={{ color: themeColors.text }} />
-                        <input
-                            type="text"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Search by name, email, or phone..."
-                            className="pl-10 pr-4 py-2.5 rounded-xl border text-sm w-full md:w-80 outline-none transition-all focus:ring-2"
-                            style={{
-                                backgroundColor: themeColors.surface,
-                                borderColor: themeColors.border,
-                                color: themeColors.text,
-                                '--tw-ring-color': themeColors.primary + '40'
-                            }}
-                        />
-                    </div>
-                    <button
-                        onClick={() => fetchUsers(pagination.page)}
-                        className="p-2.5 rounded-xl border transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
-                        style={{
-                            backgroundColor: themeColors.surface,
-                            borderColor: themeColors.border,
-                            color: themeColors.text,
-                        }}
-                        title="Refresh List"
-                    >
-                        <FaSyncAlt className={loading ? "animate-spin" : ""} />
-                    </button>
-                </div>
-            </div>
-
-            {/* Main Table Container */}
-            <div
-                className="rounded-3xl border overflow-hidden shadow-sm backdrop-blur-sm"
-                style={{
-                    backgroundColor: themeColors.surface + '80',
-                    borderColor: themeColors.border
-                }}
+  // ── Columns ────────────────────────────────────────────────
+  const columns = [
+    {
+      key: "name", label: "User",
+      render: (row) => (
+        <div>
+          <p className="font-medium text-sm" style={{ color: themeColors.text }}>{row.name || "-"}</p>
+          <p className="text-xs opacity-50" style={{ color: themeColors.text }}>{row.gender || "-"}</p>
+        </div>
+      ),
+    },
+    {
+      key: "phone", label: "Phone",
+      render: (row) => (
+        <div>
+          <p className="text-sm" style={{ color: themeColors.text }}>{row.phone}</p>
+          {row.isPhoneVerified
+            ? <span className="text-[10px] text-emerald-500">✓ Verified</span>
+            : <span className="text-[10px] text-rose-400">✗ Not verified</span>}
+        </div>
+      ),
+    },
+    {
+      key: "email", label: "Email",
+      render: (row) => (
+        <div>
+          <p className="text-sm" style={{ color: themeColors.text }}>{row.email || "-"}</p>
+          {row.email && (row.isEmailVerified
+            ? <span className="text-[10px] text-emerald-500">✓ Verified</span>
+            : <span className="text-[10px] text-rose-400">✗ Not verified</span>)}
+        </div>
+      ),
+    },
+    {
+      key: "role", label: "Role",
+      render: (row) => <Badge color={themeColors.primary} bg={themeColors.primary + "15"}>{row.role}</Badge>,
+    },
+    {
+      key: "location", label: "City",
+      render: (row) => <span className="text-sm" style={{ color: themeColors.text }}>{row.location?.city || "-"}</span>,
+    },
+    {
+      key: "wallet", label: "Wallet",
+      render: (row) => <span className="text-sm font-medium" style={{ color: themeColors.text }}>₹{row.wallet ?? 0}</span>,
+    },
+    {
+      key: "plan", label: "Plan",
+      render: (row) => (
+        <Badge
+          color={row.plan === "free" ? themeColors.text : themeColors.primary}
+          bg={row.plan === "free" ? themeColors.border : themeColors.primary + "15"}
+        >
+          {row.plan}
+        </Badge>
+      ),
+    },
+    {
+      key: "isBanned", label: "Status",
+      render: (row) => (
+        row.banned?.isBanned
+          ? (
+            <button
+              onClick={() => openBanModal(row, row.banned?.reason || "", true)}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold cursor-pointer hover:opacity-80 transition-opacity"
+              style={{ backgroundColor: "#ef444415", color: "#ef4444" }}
             >
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                        <thead>
-                            <tr style={{ backgroundColor: themeColors.background + '40' }}>
-                                {["Customer", "Contact Info", "Registration", "Status", "Action"].map((h) => (
-                                    <th key={h} className="px-6 py-4 text-xs font-bold uppercase tracking-wider" style={{ color: themeColors.text + '99' }}>
-                                        {h}
-                                    </th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y" style={{ borderColor: themeColors.border }}>
-                            {loading ? (
-                                <tr>
-                                    <td colSpan={5} className="px-6 py-20 text-center">
-                                        <div className="flex flex-col items-center gap-3">
-                                            <div className="animate-spin h-8 w-8 border-4 border-t-transparent rounded-full" style={{ borderColor: themeColors.primary }}></div>
-                                            <p className="text-sm font-medium" style={{ color: themeColors.text }}>Fetching user data...</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : filteredUsers.length === 0 ? (
-                                <tr>
-                                    <td colSpan={5} className="px-6 py-20 text-center">
-                                        <div className="flex flex-col items-center gap-4 opacity-40">
-                                            <FaUsers className="text-6xl" />
-                                            <p className="text-lg font-medium">No customers found.</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : (
-                                filteredUsers.map((user) => (
-                                    <tr
-                                        key={user._id}
-                                        className="group hover:bg-black/5 transition-colors cursor-default"
-                                    >
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="h-10 w-10 rounded-full flex items-center justify-center text-xl overflow-hidden shadow-inner" style={{ backgroundColor: themeColors.primary + '15', color: themeColors.primary }}>
-                                                    {user.firstName ? user.firstName[0].toUpperCase() : <FaUserCircle />}
-                                                </div>
-                                                <div>
-                                                    <p className="font-semibold text-sm capitalize" style={{ color: themeColors.text }}>
-                                                        {user.firstName} {user.lastName}
-                                                    </p>
-                                                    <p className="text-xs opacity-60 flex items-center gap-1">
-                                                        {user.gender || 'Not specified'}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="space-y-1">
-                                                <div className="flex items-center gap-2 text-xs" style={{ color: themeColors.text }}>
-                                                    <FaEnvelope className="opacity-40" />
-                                                    <span className="truncate max-w-[180px]">{user.email?.replace('mailto:', '')}</span>
-                                                </div>
-                                                <div className="flex items-center gap-2 text-xs" style={{ color: themeColors.text }}>
-                                                    <FaPhone className="opacity-40" />
-                                                    <span>{user.phone || 'N/A'}</span>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex flex-col">
-                                                <span className="text-sm font-medium" style={{ color: themeColors.text }}>
-                                                    {fmtDate(user.createdAt)}
-                                                </span>
-                                                <span className="text-[10px] uppercase opacity-50 font-bold tracking-tight">Joined</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span
-                                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider"
-                                                style={{
-                                                    backgroundColor: user.isActive ? '#10b98115' : '#ef444415',
-                                                    color: user.isActive ? '#10b981' : '#ef4444'
-                                                }}
-                                            >
-                                                {user.isActive ? <FaCheckCircle /> : <FaTimesCircle />}
-                                                {user.isActive ? 'Active' : 'Inactive'}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <button
-                                                onClick={() => handleViewDetails(user)}
-                                                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all hover:translate-x-1"
-                                                style={{
-                                                    backgroundColor: themeColors.primary + '10',
-                                                    color: themeColors.primary
-                                                }}
-                                            >
-                                                View Details <FaChevronRight className="text-[10px]" />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+              Banned
+            </button>
+          )
+          : row.isActive
+            ? <Badge color="#10b981" bg="#10b98115">Active</Badge>
+            : <Badge color="#f59e0b" bg="#f59e0b15">Inactive</Badge>
+      ),
+    },
+    {
+      key: "createdAt", label: "Joined",
+      render: (row) => <span className="text-xs" style={{ color: themeColors.text }}>{fmtDate(row.createdAt)}</span>,
+    },
+  ];
+
+  const actions = [
+    { label: "View",  icon: <FaEye />,         onClick: (row) => setSelectedUser(row) },
+    { label: "Ban",   icon: <FaBan />,         color: "#ef4444", hide: (row) => row.banned?.isBanned,  onClick: handleBan },
+    { label: "Unban", icon: <FaCheckCircle />,  color: "#10b981", hide: (row) => !row.banned?.isBanned, onClick: handleUnban },
+  ];
+
+  const filters = [
+    {
+      key: "role", label: "Role",
+      options: [
+        { label: "User",   value: "user" },
+        { label: "Owner",  value: "owner" },
+        { label: "Worker", value: "worker" },
+        { label: "Admin",  value: "admin" },
+        { label: "Ops",    value: "ops" },
+      ],
+    },
+    {
+      key: "isBanned", label: "Status",
+      options: [
+        { label: "Active", value: "false" },
+        { label: "Banned", value: "true" },
+      ],
+    },
+  ];
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: themeColors.text }}>
+            <FaUsers style={{ color: themeColors.primary }} /> Users
+          </h1>
+          <p className="text-sm opacity-60 mt-0.5" style={{ color: themeColors.text }}>Sabhi registered users ka data</p>
+        </div>
+        <button
+          onClick={fetchUsers}
+          disabled={loading}
+          className="px-3 py-2 rounded-lg border text-sm flex items-center gap-2 disabled:opacity-50"
+          style={{ backgroundColor: themeColors.surface, borderColor: themeColors.border, color: themeColors.text }}
+        >
+          <FaSyncAlt className={loading ? "animate-spin" : ""} /> Refresh
+        </button>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="p-3 rounded-lg text-sm border"
+          style={{ backgroundColor: themeColors.danger + "15", borderColor: themeColors.danger + "50", color: themeColors.danger }}>
+          {error}
+        </div>
+      )}
+
+      {/* Table */}
+      <Table
+        title="All Users"
+        data={users}
+        columns={columns}
+        actions={actions}
+        filters={filters}
+        loading={loading}
+        searchPlaceholder="Search by name, phone, email..."
+        rowKey="_id"
+      />
+
+      {/* User Detail Modal */}
+      {selectedUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div
+            className="w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-2xl shadow-2xl flex flex-col"
+            style={{ backgroundColor: themeColors.surface }}
+          >
+            <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: themeColors.border }}>
+              <div className="flex items-center gap-4">
+                <div
+                  className="h-14 w-14 rounded-full flex items-center justify-center text-2xl font-bold"
+                  style={{ backgroundColor: themeColors.primary, color: themeColors.onPrimary }}
+                >
+                  {selectedUser.avatar
+                    ? <img src={selectedUser.avatar} alt={selectedUser.name} className="h-14 w-14 rounded-full object-cover" />
+                    : selectedUser.name?.[0]?.toUpperCase()}
                 </div>
+                <div>
+                  <h2 className="text-lg font-bold" style={{ color: themeColors.text }}>{selectedUser.name}</h2>
+                  <p className="text-xs opacity-60" style={{ color: themeColors.text }}>{selectedUser.phone} • {selectedUser.role}</p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedUser(null)} className="text-xl px-2" style={{ color: themeColors.text }}>×</button>
             </div>
 
-            {!loading && pagination.totalPages > 1 && (
-                <Pagination pagination={pagination} onPageChange={handlePageChange} />
-            )}
+            <div className="overflow-y-auto p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  ["Email",          selectedUser.email || "-"],
+                  ["Gender",         selectedUser.gender || "-"],
+                  ["Date of Birth",  fmtDate(selectedUser.dateOfBirth)],
+                  ["City",           selectedUser.location?.city || "-"],
+                  ["State",          selectedUser.location?.state || "-"],
+                  ["Plan",           selectedUser.plan],
+                  ["Wallet",         `₹${selectedUser.wallet ?? 0}`],
+                  ["Total Earnings", `₹${selectedUser.totalEarnings ?? 0}`],
+                  ["Rating",         selectedUser.rating ?? 0],
+                  ["Total Reviews",  selectedUser.totalReviews ?? 0],
+                  ["Referral Code",  selectedUser.referralCode || "-"],
+                  ["Referral Count", selectedUser.referralCount ?? 0],
+                  ["KYC Status",     selectedUser.kyc?.status || "-"],
+                  ["Ban Reason",      selectedUser.banned?.reason || "-"],
+                  ["Banned At",       fmtDate(selectedUser.banned?.bannedAt)],
+                  ["Last Seen",      fmtDate(selectedUser.lastSeen)],
+                  ["Joined",         fmtDate(selectedUser.createdAt)],
+                  ["Phone Verified", selectedUser.isPhoneVerified ? "Yes" : "No"],
+                ].map(([label, value]) => (
+                  <div key={label} className="p-3 rounded-lg border" style={{ borderColor: themeColors.border, backgroundColor: themeColors.background }}>
+                    <p className="text-[10px] uppercase opacity-50 font-semibold" style={{ color: themeColors.text }}>{label}</p>
+                    <p className="text-sm font-medium mt-0.5" style={{ color: themeColors.text }}>{value}</p>
+                  </div>
+                ))}
+              </div>
 
-            {/* User Details Modal (same as before) */}
-            {selectedUser && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-                    <div
-                        className="w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-[2.5rem] shadow-2xl animate-scaleIn flex flex-col"
-                        style={{ backgroundColor: themeColors.surface }}
-                    >
-                        {/* Modal Header */}
-                        <div className="p-8 pb-4 flex items-center justify-between border-b" style={{ borderColor: themeColors.border }}>
-                            <div className="flex items-center gap-5">
-                                <div className="h-20 w-20 rounded-3xl flex items-center justify-center text-4xl shadow-xl" style={{ backgroundColor: themeColors.primary, color: themeColors.onPrimary }}>
-                                    {selectedUser.firstName[0].toUpperCase()}
-                                </div>
-                                <div>
-                                    <h2 className="text-2xl font-black capitalize" style={{ color: themeColors.text }}>
-                                        {selectedUser.firstName} {selectedUser.lastName}
-                                    </h2>
-                                    <div className="flex items-center gap-3 mt-1">
-                                        <span className="text-sm opacity-60 flex items-center gap-1"><FaEnvelope className="text-[10px]" /> {selectedUser.email?.replace('mailto:', '')}</span>
-                                        <span className="h-1 w-1 rounded-full bg-gray-400"></span>
-                                        <span className="text-sm opacity-60 flex items-center gap-1"><FaPhone className="text-[10px]" /> {selectedUser.phone}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => setSelectedUser(null)}
-                                className="h-10 w-10 rounded-full flex items-center justify-center transition-colors hover:bg-black/5 text-xl"
-                                style={{ color: themeColors.text }}
-                            >
-                                &times;
-                            </button>
-                        </div>
-
-                        {/* Modal Content */}
-                        <div className="flex-1 overflow-y-auto p-8 pt-6 space-y-8 custom-scrollbar">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="p-5 rounded-3xl border space-y-4" style={{ backgroundColor: themeColors.background + '30', borderColor: themeColors.border }}>
-                                    <h3 className="text-xs font-black uppercase tracking-widest opacity-40 flex items-center gap-2">
-                                        <FaUserCircle /> Basic Information
-                                    </h3>
-                                    <div className="space-y-3">
-                                        <DetailItem label="Gender" value={selectedUser.gender} />
-                                        <DetailItem label="Birthday" value={fmtDate(selectedUser.dateOfBirth)} />
-                                        <DetailItem label="Registration" value={fmtDate(selectedUser.createdAt)} />
-                                        <DetailItem label="Last Login" value={selectedUser.lastLogin ? fmtDate(selectedUser.lastLogin) : 'Never'} />
-                                    </div>
-                                </div>
-
-                                <div className="p-5 rounded-3xl border space-y-4" style={{ backgroundColor: themeColors.background + '30', borderColor: themeColors.border }}>
-                                    <h3 className="text-xs font-black uppercase tracking-widest opacity-40 flex items-center gap-2">
-                                        <FaCheckCircle /> Verification & Preferences
-                                    </h3>
-                                    <div className="space-y-3">
-                                        <StatusItem label="Email Verified" status={selectedUser.isEmailVerified} />
-                                        <StatusItem label="Phone Verified" status={selectedUser.isPhoneVerified} />
-                                        <StatusItem label="Newsletter" status={selectedUser.preferences?.newsletter} />
-                                        <StatusItem label="SMS Updates" status={selectedUser.preferences?.smsUpdates} />
-                                    </div>
-                                </div>
-
-                                <div className="p-5 rounded-3xl border space-y-4" style={{ backgroundColor: themeColors.background + '30', borderColor: themeColors.border }}>
-                                    <h3 className="text-xs font-black uppercase tracking-widest opacity-40 flex items-center gap-2">
-                                        <FaMapMarkerAlt /> Addresses
-                                    </h3>
-                                    <div className="text-center py-4">
-                                        <span className="text-4xl font-black" style={{ color: themeColors.primary }}>
-                                            {selectedUser.addresses?.length || 0}
-                                        </span>
-                                        <p className="text-xs uppercase font-bold opacity-50 mt-1">Saved Addresses</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {selectedUser.addresses && selectedUser.addresses.length > 0 && (
-                                <div className="space-y-4">
-                                    <h3 className="text-lg font-bold px-2" style={{ color: themeColors.text }}>Stored Addresses</h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {selectedUser.addresses.map((addr, idx) => (
-                                            <div key={idx} className="p-6 rounded-[2rem] border transition-all hover:shadow-lg relative overflow-hidden group" style={{ borderColor: themeColors.border }}>
-                                                <div className="absolute top-0 right-0 p-3">
-                                                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500">
-                                                        {addr.addressType}
-                                                    </span>
-                                                </div>
-                                                <h4 className="font-bold text-sm mb-3 flex items-center gap-2" style={{ color: themeColors.text }}>
-                                                    <FaUserCircle className="opacity-30" /> {addr.name}
-                                                </h4>
-                                                <div className="space-y-1.5">
-                                                    <p className="text-xs opacity-70 leading-relaxed font-medium">
-                                                        {addr.addressLine1}{addr.addressLine2 ? `, ${addr.addressLine2}` : ""}
-                                                    </p>
-                                                    <p className="text-xs font-bold" style={{ color: themeColors.text }}>
-                                                        {addr.city}, {addr.state} - {addr.pincode}
-                                                    </p>
-                                                    <p className="text-xs opacity-50 font-bold uppercase tracking-wider">{addr.country}</p>
-                                                </div>
-                                                <div className="mt-4 flex items-center gap-2 text-xs font-bold" style={{ color: themeColors.primary }}>
-                                                    <FaPhone className="text-[10px]" /> {addr.phone}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="p-6 border-t flex justify-end" style={{ borderColor: themeColors.border }}>
-                            <button
-                                onClick={() => setSelectedUser(null)}
-                                className="px-8 py-3 rounded-2xl font-bold transition-all active:scale-95"
-                                style={{ backgroundColor: themeColors.primary, color: themeColors.onPrimary }}
-                            >
-                                Close Profile
-                            </button>
-                        </div>
-                    </div>
+              {selectedUser.skills?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold opacity-60 mb-2" style={{ color: themeColors.text }}>Skills</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedUser.skills.map((s) => (
+                      <span key={s} className="px-2 py-1 rounded-lg text-xs border" style={{ borderColor: themeColors.border, color: themeColors.text }}>{s}</span>
+                    ))}
+                  </div>
                 </div>
-            )}
+              )}
 
-            <style jsx>{`
-        .animate-fadeIn {
-          animation: fadeIn 0.4s ease-out;
-        }
-        .animate-scaleIn {
-          animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
+              {selectedUser.location?.address && (
+                <div className="p-3 rounded-lg border flex items-start gap-2" style={{ borderColor: themeColors.border, backgroundColor: themeColors.background }}>
+                  <FaMapMarkerAlt className="mt-0.5 flex-shrink-0" style={{ color: themeColors.primary }} />
+                  <p className="text-sm" style={{ color: themeColors.text }}>{selectedUser.location.address}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t flex justify-end" style={{ borderColor: themeColors.border }}>
+              <button
+                onClick={() => setSelectedUser(null)}
+                className="px-6 py-2 rounded-lg font-semibold text-sm"
+                style={{ backgroundColor: themeColors.primary, color: themeColors.onPrimary }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ban Modal */}
+      {banModal.open && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity duration-200"
+        style={{ opacity: banModal.visible ? 1 : 0 }}
+      >
+        <div
+          className="w-full max-w-md rounded-2xl shadow-2xl border transition-all duration-200"
+          style={{
+            backgroundColor: themeColors.surface,
+            borderColor: themeColors.border,
+            opacity: banModal.visible ? 1 : 0,
+            transform: banModal.visible ? "scale(1)" : "scale(0.92)",
+          }}
+        >
+            <div className="flex items-center justify-between p-5 border-b" style={{ borderColor: themeColors.border }}>
+              <h2 className="text-base font-bold" style={{ color: themeColors.text }}>
+                {banModal.viewMode ? "Ban Details" : "Ban User"}
+              </h2>
+              <button onClick={closeBanModal} className="text-xl px-1" style={{ color: themeColors.text }}>×</button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {banModal.error && (
+                <div className="p-3 rounded-lg text-sm border" style={{ backgroundColor: "#ef444415", borderColor: "#ef444430", color: "#ef4444" }}>
+                  {banModal.error}
+                </div>
+              )}
+              {banModal.viewMode ? (
+                <>
+                  <p className="text-sm" style={{ color: themeColors.text }}>
+                    <span className="font-semibold">{banModal.user?.name}</span> is currently banned.
+                  </p>
+                  <div className="p-3 rounded-lg border" style={{ borderColor: themeColors.border, backgroundColor: themeColors.background }}>
+                    <p className="text-[10px] uppercase opacity-50 font-semibold mb-1" style={{ color: themeColors.text }}>Ban Reason</p>
+                    <p className="text-sm" style={{ color: themeColors.text }}>{banModal.reason || "No reason provided"}</p>
+                  </div>
+                  {banModal.user?.banned?.bannedAt && (
+                    <div className="p-3 rounded-lg border" style={{ borderColor: themeColors.border, backgroundColor: themeColors.background }}>
+                      <p className="text-[10px] uppercase opacity-50 font-semibold mb-1" style={{ color: themeColors.text }}>Banned At</p>
+                      <p className="text-sm" style={{ color: themeColors.text }}>{fmtDate(banModal.user.banned.bannedAt)}</p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="text-sm" style={{ color: themeColors.text }}>
+                    Enter a reason for banning <span className="font-semibold">{banModal.user?.name}</span>:
+                  </p>
+                  <textarea
+                    rows={3}
+                    value={banModal.reason}
+                    onChange={(e) => setBanModal((prev) => ({ ...prev, reason: e.target.value }))}
+                    placeholder="Enter ban reason..."
+                    className="w-full px-3 py-2 rounded-lg border text-sm resize-none focus:outline-none"
+                    style={{ backgroundColor: themeColors.background, borderColor: themeColors.border, color: themeColors.text }}
+                  />
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 px-5 pb-5">
+              <button
+                onClick={closeBanModal}
+                className="px-4 py-2 rounded-lg border text-sm"
+                style={{ borderColor: themeColors.border, color: themeColors.text }}
+              >
+                Cancel
+              </button>
+              {banModal.viewMode ? (
+                <button
+                  onClick={async () => {
+                    await handleUnban(banModal.user);
+                    closeBanModal();
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold"
+                  style={{ backgroundColor: "#10b981", color: "#fff" }}
+                >
+                  Unban User
+                </button>
+              ) : (
+                <button
+                  onClick={handleBanSubmit}
+                  disabled={!banModal.reason.trim() || banModal.loading}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
+                  style={{ backgroundColor: "#ef4444", color: "#fff" }}
+                >
+                  {banModal.loading ? "Banning..." : "Ban User"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
         @keyframes fadeIn {
           from { opacity: 0; }
-          to { opacity: 1; }
+          to   { opacity: 1; }
         }
         @keyframes scaleIn {
-          from { opacity: 0; transform: scale(0.95); }
-          to { opacity: 1; transform: scale(1); }
+          from { opacity: 0; transform: scale(0.92); }
+          to   { opacity: 1; transform: scale(1); }
         }
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 5px;
+        @keyframes fadeOut {
+          from { opacity: 1; }
+          to   { opacity: 0; }
         }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
+        @keyframes scaleOut {
+          from { opacity: 1; transform: scale(1); }
+          to   { opacity: 0; transform: scale(0.92); }
         }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: ${themeColors.border};
-          border-radius: 10px;
-        }
+        .animate-fadeOut  { animation: fadeOut  0.2s ease-in forwards; }
+        .animate-scaleOut { animation: scaleOut 0.2s ease-in forwards; }
       `}</style>
-        </div>
-    );
-}
-
-function DetailItem({ label, value }) {
-    const { themeColors } = useTheme();
-    return (
-        <div className="flex flex-col">
-            <span className="text-[10px] uppercase font-bold opacity-40 tracking-wider font-mono">{label}</span>
-            <span className="text-sm font-semibold truncate" style={{ color: themeColors.text }}>{value || 'N/A'}</span>
-        </div>
-    );
-}
-
-function StatusItem({ label, status }) {
-    const { themeColors } = useTheme();
-    return (
-        <div className="flex items-center justify-between">
-            <span className="text-xs font-medium opacity-70">{label}</span>
-            <span
-                className={`h-2 w-2 rounded-full ${status ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]'}`}
-            ></span>
-        </div>
-    );
+    </div>
+  );
 }
